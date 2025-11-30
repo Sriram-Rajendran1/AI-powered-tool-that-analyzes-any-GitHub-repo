@@ -1,0 +1,84 @@
+import os
+import tempfile
+import shutil
+import stat
+
+from flask import Flask, request, jsonify
+from git import Repo
+
+from analysis_service import analyze_repo_dir
+
+app = Flask(__name__)
+
+
+def remove_readonly(func, path, excinfo):
+    """
+    Fix for Windows: remove read-only flags before deleting.
+    Prevents WinError 5 (Access Denied) when deleting .git pack files.
+    """
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except Exception:
+        pass
+
+
+@app.route("/")
+def home():
+    return "AI Code Intelligence Backend is running 🚀"
+
+
+@app.route("/analyze", methods=["POST"])
+def analyze_repo():
+    print("🔥 /analyze called")
+
+    data = request.get_json()
+    repo_url = data.get("repo_url")
+
+    if not repo_url:
+        return {"error": "repo_url required"}, 400
+
+    print("🔥 Repo URL:", repo_url)
+
+    # Create temp folder
+    temp = tempfile.mkdtemp()
+    repo_dir = os.path.join(temp, "repo")
+
+    # Clone repository
+    try:
+        print("🔥 Cloning repository...")
+        Repo.clone_from(repo_url, repo_dir)
+        print("🔥 Clone completed")
+    except Exception as e:
+        print("❌ Clone failed:", e)
+        shutil.rmtree(temp, ignore_errors=True)
+        return {"error": str(e)}, 500
+
+    # Extract repo name
+    repo_name = repo_url.rstrip("/").split("/")[-1].replace(".git", "")
+    print("🔥 Repo Name:", repo_name)
+
+    # Analyze repository
+    try:
+        print("🔥 Starting analysis...")
+        result = analyze_repo_dir(repo_dir, repo_name)
+        print("🔥 Analysis done")
+    except Exception as e:
+        print("❌ Analysis failed:", e)
+        shutil.rmtree(temp, ignore_errors=True)
+        return {"error": str(e)}, 500
+
+    # Safe cleanup
+    print("🧹 Cleaning temporary files...")
+    try:
+        shutil.rmtree(temp, onerror=remove_readonly)
+        print("🧹 Cleanup successful")
+    except Exception as e:
+        print("⚠ Cleanup warning:", e)
+
+    return jsonify(result)
+
+
+if __name__ == "__main__":
+    print("🚀 Starting backend...")
+    app.run(debug=True)
