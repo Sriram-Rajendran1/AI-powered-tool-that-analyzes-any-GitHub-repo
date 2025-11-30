@@ -9,6 +9,8 @@ from git import Repo
 from analysis_service import analyze_repo_dir
 
 app = Flask(__name__)
+# Load API KEY from environment
+API_KEY = os.getenv("API_KEY")
 
 
 def remove_readonly(func, path, excinfo):
@@ -21,6 +23,13 @@ def remove_readonly(func, path, excinfo):
         func(path)
     except Exception:
         pass
+        
+@app.before_request
+def verify_api_key():
+    if request.method == "POST":
+        key = request.headers.get("x-api-key")
+        if key != API_KEY:
+            return jsonify({"error": "Unauthorized"}), 401
 
 
 @app.route("/")
@@ -82,3 +91,4 @@ def analyze_repo():
 if __name__ == "__main__":
     print("🚀 Starting backend...")
     app.run(debug=True)
+
